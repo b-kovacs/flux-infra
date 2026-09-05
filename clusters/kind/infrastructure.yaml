@@ -1,15 +1,12 @@
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
-  name: apps
+  name: infrastructure
   namespace: flux-system
 spec:
-  interval: 1m
-  dependsOn:
-    - name: infrastructure
-  path: ./clusters/kind/apps
+  interval: 10m
+  path: ./clusters/kind/infrastructure
   prune: true
   sourceRef:
     kind: GitRepository
     name: flux-system
-  wait: true

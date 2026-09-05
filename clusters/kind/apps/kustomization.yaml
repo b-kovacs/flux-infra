@@ -3,4 +3,3 @@ kind: Kustomization
 resources:
   - demo-app.yaml
   - gateway.yaml
-  - metallb-config.yaml

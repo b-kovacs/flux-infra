@@ -9,6 +9,7 @@ spec:
     - name: infrastructure
   path: ./clusters/kind/apps
   prune: true
+  targetNamespace: default
   sourceRef:
     kind: GitRepository
     name: flux-system

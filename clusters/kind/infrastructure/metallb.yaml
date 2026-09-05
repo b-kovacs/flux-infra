@@ -14,9 +14,12 @@ metadata:
   namespace: flux-system
 spec:
   interval: 10m
+  timeout: 15m                    # CHANGED: was absent (defaulted to 5m)
   targetNamespace: metallb-system
   install:
     createNamespace: true
+    remediation:                  # CHANGED: added — retry failed installs
+      retries: 3
   chart:
     spec:
       chart: metallb

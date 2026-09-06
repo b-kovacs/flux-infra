@@ -88,7 +88,7 @@ spec:
     spec:
       containers:
         - name: demo-app
-          image: registry-local:5000/demo-app:1788699339-79aed42bacc5c0f203225ca97d401d58b4abb391 # {"$imagepolicy": "flux-system:demo-app"}
+          image: registry-local:5000/demo-app:1788701707-f8264fa8767ba536fa46da9b004bf8f164f96c96 # {"$imagepolicy": "flux-system:demo-app"}
           imagePullPolicy: Always
           env:
             - name: DB_HOST

@@ -12,8 +12,10 @@ manual step. I proved the whole thing rebuilds from this repo alone by deleting 
 cluster completely and recreating it from scratch.
 
 The application it runs lives in a separate repo,
-[springboot-demo](https://github.com/b-kovacs/springboot-demo). That's a small Spring Boot
-service. This platform builds it, deploys it, secures it, and monitors it.
+[springboot-demo](https://github.com/b-kovacs/springboot-demo). That's a small internal
+announcements service, kept deliberately simple so the learning effort could go into the
+platform here instead of into the app's own business logic. Both repos matter equally to
+the project. This platform builds the app, deploys it, secures it, and monitors it.
 
 The full build log is in [`learning/`](https://github.com/b-kovacs/springboot-demo/tree/main/learning)
 inside the app repo. It documents every bug I found, every wrong theory I had and later

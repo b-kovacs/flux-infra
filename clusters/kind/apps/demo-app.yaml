@@ -110,7 +110,7 @@ spec:
       automountServiceAccountToken: false
       containers:
         - name: demo-app
-          image: registry-local:5000/demo-app:1788708148-428ec15d4aa18fb4a757d0dafef19e559c9cae58 # {"$imagepolicy": "flux-system:demo-app"}
+          image: registry-local:5000/demo-app:1788708363-956771f7f993d8aedc965b1757f727d497b9b502 # {"$imagepolicy": "flux-system:demo-app"}
           imagePullPolicy: Always
           securityContext:
             runAsNonRoot: true

@@ -1,0 +1,54 @@
+# Default-deny ingress for the namespace, then explicit allows. Egress is left open
+# deliberately (Tekton builds need to reach GitHub/Maven Central/the registry; locking
+# that down too is a separate, riskier change - see learning/06-open-gaps-and-next-steps.md).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: default
+spec:
+  podSelector: {}
+  policyTypes: ["Ingress"]
+---
+# Only demo-app may reach postgres.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-postgres-from-demo-app
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+      app: postgres
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: demo-app
+        - podSelector:
+            matchLabels:
+              app: postgres-backup
+      ports:
+        - port: 5432
+          protocol: TCP
+---
+# Only the Gateway (Envoy) may reach demo-app.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-demo-app-from-gateway
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+      app: demo-app
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: envoy-gateway-system
+      ports:
+        - port: 8080
+          protocol: TCP

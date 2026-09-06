@@ -1,0 +1,24 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: demo-app
+  namespace: default
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: demo-app
+---
+# postgres is a singleton (no replication) - this doesn't provide HA, it just stops a
+# voluntary eviction (node drain, etc.) from taking down the only copy without a human
+# choosing to do so first.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: postgres
+  namespace: default
+spec:
+  maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: postgres

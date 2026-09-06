@@ -4,3 +4,6 @@ resources:
   - demo-app.yaml
   - postgres-secret.yaml
   - gateway.yaml
+  - network-policies.yaml
+  - pdb.yaml
+  - postgres-backup.yaml

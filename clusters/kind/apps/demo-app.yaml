@@ -25,9 +25,30 @@ spec:
       labels:
         app: postgres
     spec:
+      automountServiceAccountToken: false
+      securityContext:
+        fsGroup: 999
+      initContainers:
+        # official postgres image traditionally runs as root and drops privileges itself;
+        # here we run non-root from the start (securityContext below), so fix ownership of
+        # the existing volume (previously written to as root) once, up front.
+        - name: fix-data-perms
+          image: postgres:17
+          command: ["sh", "-c", "chown -R 999:999 /var/lib/postgresql/data"]
+          volumeMounts:
+            - name: postgres-storage
+              mountPath: /var/lib/postgresql/data
+              subPath: pgdata
       containers:
         - name: postgres
           image: postgres:17
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 999
+            runAsGroup: 999
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
           envFrom:
             - secretRef:
                 name: postgres-secret
@@ -77,7 +98,7 @@ kind: Deployment
 metadata:
   name: demo-app
 spec:
-  replicas: 1
+  replicas: 2
   selector:
     matchLabels:
       app: demo-app
@@ -86,10 +107,17 @@ spec:
       labels:
         app: demo-app
     spec:
+      automountServiceAccountToken: false
       containers:
         - name: demo-app
           image: registry-local:5000/demo-app:1788701707-f8264fa8767ba536fa46da9b004bf8f164f96c96 # {"$imagepolicy": "flux-system:demo-app"}
           imagePullPolicy: Always
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
           env:
             - name: DB_HOST
               value: postgres

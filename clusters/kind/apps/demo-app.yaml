@@ -78,7 +78,7 @@ spec:
     spec:
       containers:
         - name: demo-app
-          image: demo-app:1.0
+          image: registry-local:5000/demo-app:1.0
           imagePullPolicy: IfNotPresent
           env:
             - name: DB_HOST

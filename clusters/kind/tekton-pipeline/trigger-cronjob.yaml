@@ -1,0 +1,58 @@
+# Polls the app source repo for new commits and creates a PipelineRun when the tip
+# changes. A real webhook is impossible here (GitHub can't reach a laptop behind WSL/NAT
+# with no inbound path - see learning/02-what-went-badly.md), so this is the pull-based,
+# WSL-friendly equivalent: outbound-only, no tunnel needed.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: build-trigger
+  namespace: default
+spec:
+  schedule: "*/2 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          serviceAccountName: build-trigger
+          restartPolicy: Never
+          containers:
+            - name: trigger
+              image: alpine/k8s:1.29.0
+              command: ["/bin/sh", "-c"]
+              args:
+                - |
+                  set -e
+                  LATEST=$(git ls-remote https://github.com/b-kovacs/springboot-demo.git refs/heads/main | cut -f1)
+                  LAST=$(kubectl get configmap build-trigger-state -n default -o jsonpath='{.data.lastSha}' 2>/dev/null || true)
+                  if [ -n "$LAST" ] && [ "$LATEST" = "$LAST" ]; then
+                    echo "no change ($LATEST)"
+                    exit 0
+                  fi
+                  echo "new commit: $LATEST (was: ${LAST:-none}) - triggering build"
+                  kubectl create -f - <<PIPELINERUN
+                  apiVersion: tekton.dev/v1
+                  kind: PipelineRun
+                  metadata:
+                    generateName: build-app-run-
+                    namespace: default
+                  spec:
+                    pipelineRef:
+                      name: build-app
+                    taskRunTemplate:
+                      serviceAccountName: tekton-build
+                    params:
+                      - name: repo-url
+                        value: https://github.com/b-kovacs/springboot-demo.git
+                      - name: image
+                        value: registry-local:5000/demo-app
+                    workspaces:
+                      - name: shared-data
+                        persistentVolumeClaim:
+                          claimName: tekton-workspace
+                  PIPELINERUN
+                  kubectl create configmap build-trigger-state -n default \
+                    --from-literal=lastSha="$LATEST" --dry-run=client -o yaml | kubectl apply -f -

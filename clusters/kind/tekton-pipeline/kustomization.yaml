@@ -8,3 +8,5 @@ resources:
   - maven-build.yaml
   - kaniko-build.yaml
   - pipeline.yaml
+  - trigger-rbac.yaml
+  - trigger-cronjob.yaml

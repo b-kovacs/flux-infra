@@ -8,9 +8,14 @@ spec:
     - name: repo-url
       type: string
     - name: image
+      description: image repo WITHOUT a tag, e.g. registry-local:5000/demo-app
       type: string
   workspaces:
     - name: shared-data
+  results:
+    - name: image-tag
+      description: the unique tag pushed by this run (chronologically sortable, for Flux image automation)
+      value: $(tasks.fetch-source.results.committer-date)-$(tasks.fetch-source.results.commit)
   tasks:
     - name: fetch-source
       taskRef:
@@ -37,4 +42,4 @@ spec:
           workspace: shared-data
       params:
         - name: IMAGE
-          value: $(params.image)
+          value: $(params.image):$(tasks.fetch-source.results.committer-date)-$(tasks.fetch-source.results.commit)

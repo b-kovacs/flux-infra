@@ -1,3 +1,7 @@
+# Created explicitly, rather than relying on the HelmRelease's own
+# install.createNamespace, so this namespace exists as a real Git-managed object other
+# manifests can safely reference (network-policies.yaml selects it by
+# kubernetes.io/metadata.name, a label Kubernetes sets automatically on every namespace).
 apiVersion: v1
 kind: Namespace
 metadata:

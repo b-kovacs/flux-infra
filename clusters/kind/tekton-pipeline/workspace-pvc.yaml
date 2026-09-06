@@ -1,3 +1,17 @@
+# The one workspace every build-app PipelineRun shares (see pipeline.yaml's
+# shared-data workspace, bound to this exact PVC in trigger-cronjob.yaml). This is a
+# deliberate choice, not a default: reusing one PVC lets the maven-build step keep a warm
+# .m2 dependency cache between builds (see maven-build.yaml), which took a cold build from
+# roughly 4 minutes down to 16-18 seconds.
+#
+# The cost of that choice: this is a single, fixed-name PVC with no mutual exclusion of
+# its own. Two PipelineRuns actually running at the same time would both be reading and
+# writing this same directory, and a later run's git-clone cleanup step deletes the
+# earlier run's checked-out source mid-build. This was the real, final cause of an
+# intermittent build failure that took three separate theories to actually pin down. See
+# the twelfth lesson in the springboot-demo repo's learning/README.md for the full story.
+# The fix lives in trigger-cronjob.yaml: it checks for an already-running build before
+# creating a new one, rather than protecting this PVC itself.
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:

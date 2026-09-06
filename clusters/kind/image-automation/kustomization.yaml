@@ -1,3 +1,7 @@
+# Plain Kustomize file listing the three custom resources that make up Flux image
+# automation. They form a small pipeline of their own: ImageRepository scans the
+# registry, ImagePolicy picks the newest valid tag out of what it found, and
+# ImageUpdateAutomation writes that tag into the actual Deployment manifest in Git.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:

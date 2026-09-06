@@ -1,3 +1,5 @@
+# The chart source for kube-prometheus-stack, referenced by name from
+# kube-prometheus-stack.yaml's HelmRelease.
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
 metadata:

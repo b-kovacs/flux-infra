@@ -1,9 +1,12 @@
+# Tells Flux which registry to scan, and how often, for new tags of demo-app. This is
+# read-only: it doesn't change anything on its own, it just keeps a list of what tags
+# currently exist for image-policy.yaml to choose from.
 apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: demo-app
   namespace: flux-system
 spec:
-  image: registry-local:5000/demo-app
+  image: registry-local:5000/demo-app   # must resolve from the flux-system namespace; see infrastructure/registry-local.yaml
   interval: 1m
-  insecure: true
+  insecure: true   # required because registry-local serves plain HTTP, the same reason Kaniko needs --insecure to push to it

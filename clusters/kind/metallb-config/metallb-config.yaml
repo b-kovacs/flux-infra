@@ -1,3 +1,9 @@
+# IPAddressPool: the actual range of IPs MetalLB is allowed to hand out to Services of
+# type LoadBalancer. This range is on the same subnet as the "kind" nerdctl network the
+# cluster's nodes and registry-local both live on, chosen so those IPs are at least
+# reachable from other containers on that network, even though they're not reachable
+# directly from the Windows host (a WSL networking limit, not a MetalLB one; see the
+# honest boundary section in the root README).
 apiVersion: metallb.io/v1beta1
 kind: IPAddressPool
 metadata:
@@ -7,6 +13,10 @@ spec:
   addresses:
     - 10.4.1.200-10.4.1.250
 ---
+# L2Advertisement: tells MetalLB HOW to actually announce those IPs on the network, using
+# plain Layer 2 (ARP) rather than BGP. L2 mode is the simple choice for a single-host lab
+# cluster like this one; BGP would matter on real multi-host bare metal where you want the
+# network's own routers involved in load-balancing traffic across nodes.
 apiVersion: metallb.io/v1beta1
 kind: L2Advertisement
 metadata:

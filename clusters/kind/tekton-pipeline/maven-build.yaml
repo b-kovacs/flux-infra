@@ -1,9 +1,13 @@
+# A Tekton Task: a reusable, named build step. This one builds demo-app's fat jar.
 apiVersion: tekton.dev/v1
 kind: Task
 metadata:
   name: maven-build
   namespace: default
 spec:
+  # A workspace is how a Task shares files with the rest of the Pipeline. "source" here
+  # gets bound, in pipeline.yaml, to the same PVC the git-clone step already checked the
+  # app's code out into, so this step can just build what's already there.
   workspaces:
     - name: source
   steps:
@@ -13,4 +17,10 @@ spec:
       script: |
         #!/usr/bin/env bash
         set -e
+        # -Dmaven.repo.local points Maven's dependency cache at a subfolder of this same
+        # persistent workspace instead of a throwaway location inside the container. Since
+        # the same workspace PVC is reused across builds (see workspace-pvc.yaml),
+        # dependencies only get downloaded from the internet once, not on every build.
+        # This is what took a cold build from about 4 minutes to roughly 16-18 seconds
+        # warm.
         mvn clean package -B -Dmaven.repo.local=$(workspaces.source.path)/.m2

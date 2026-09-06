@@ -1,3 +1,6 @@
+# The identity the build-trigger CronJob (trigger-cronjob.yaml) actually runs as, and the
+# minimum permissions it needs to do its job: nothing broader than "create a PipelineRun"
+# and "read/write this one specific ConfigMap it uses to remember the last SHA it saw."
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -12,13 +15,23 @@ metadata:
 rules:
   - apiGroups: ["tekton.dev"]
     resources: ["pipelineruns"]
-    verbs: ["create", "get", "list"]
+    verbs: ["create", "get", "list"]   # create a new run, and list/get to check for an already-running one
   - apiGroups: [""]
     resources: ["configmaps"]
+    # resourceNames scopes this rule to exactly one ConfigMap by name, rather than every
+    # ConfigMap in the namespace. "patch" is included alongside "update" specifically
+    # because `kubectl apply` (used in trigger-cronjob.yaml to write the last-seen SHA)
+    # issues a patch request, not a plain update; a Role with only "update" here would
+    # make that call fail with a permissions error even though it looks like it should be
+    # covered.
     resourceNames: ["build-trigger-state"]
     verbs: ["get", "update", "patch"]
   - apiGroups: [""]
     resources: ["configmaps"]
+    # A separate rule for "create": resourceNames can't be used to scope a create verb
+    # (the object doesn't exist yet, so there's no name to match against), so the
+    # permission to create the ConfigMap for the very first time has to be granted
+    # unscoped like this.
     verbs: ["create"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1

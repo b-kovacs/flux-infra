@@ -1,3 +1,13 @@
+# Tells Prometheus to scrape demo-app's metrics. This is the object that caused the
+# subtlest, most silent bug in this whole project: `spec.selector` here matches a
+# Service's `metadata.labels`, NOT the Service's own `spec.selector` (the thing that
+# decides which pods that Service actually routes to). Those two fields look related but
+# serve entirely different purposes, and getting this wrong produces no error anywhere:
+# the ServiceMonitor applies fine, the Service keeps routing traffic correctly, and
+# Prometheus simply never adds a scrape target for it, with nothing in any log pointing at
+# why. See the tenth lesson in learning/README.md for how this was actually found (by
+# querying Prometheus's own generated configuration directly, not by reading the manifest
+# harder).
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
@@ -6,8 +16,8 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app: demo-app
+      app: demo-app   # must match the Service's metadata.labels in apps/demo-app.yaml, see the note there
   endpoints:
-    - port: http
+    - port: http      # the NAME of a port on that Service, not a port number
       path: /actuator/prometheus
       interval: 15s

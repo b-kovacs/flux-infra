@@ -1,3 +1,5 @@
+# Picks which one tag, out of everything ImageRepository sees, is "the newest," so
+# ImageUpdateAutomation knows what to actually write into the Deployment.
 apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
@@ -7,9 +9,16 @@ spec:
   imageRepositoryRef:
     name: demo-app
   filterTags:
-    # only consider tags in the pipeline's <committer-epoch>-<full-sha> format;
-    # excludes the old fixed :1.0 tag and anything else stray
+    # Only consider tags matching the pipeline's own <committer-epoch>-<full-sha> format
+    # (see tekton-pipeline/pipeline.yaml). This excludes the old fixed :1.0 tag from an
+    # earlier, manual version of this pipeline, and anything else stray that might ever
+    # get pushed under a different naming scheme.
     pattern: '^\d{10}-[0-9a-f]{40}$'
   policy:
+    # demo-app has no semantic version (v1.2.3), which is what Flux's more common semver
+    # policy expects, so alphabetical ordering is used instead. This only works because
+    # every tag is prefixed with a 10-digit Unix timestamp: comparing tags as plain
+    # strings then happens to sort them in true chronological order too, for as long as a
+    # Unix timestamp stays exactly 10 digits, which is until the year 2286.
     alphabetical:
       order: asc

@@ -1,3 +1,11 @@
+# The Kubernetes Gateway API in three parts. This is the newer, more expressive successor
+# to Ingress, split across three separate object kinds instead of Ingress's single
+# monolithic object, specifically so a platform team and an app team can each own their
+# own piece without touching the other's.
+
+# GatewayClass: which controller actually implements the Gateway API here. This points at
+# Envoy Gateway (installed in infrastructure/envoy-gateway.yaml). A platform-level object,
+# owned once per cluster, not per app.
 apiVersion: gateway.networking.k8s.io/v1
 kind: GatewayClass
 metadata:
@@ -5,6 +13,8 @@ metadata:
 spec:
   controllerName: gateway.envoyproxy.io/gatewayclass-controller
 ---
+# Gateway: the actual listener. This is what causes Envoy Gateway to provision a real
+# LoadBalancer Service (getting its IP from MetalLB) and start listening on port 80.
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
@@ -16,9 +26,16 @@ spec:
       protocol: HTTP
       port: 80
       allowedRoutes:
+        # "Same" restricts which namespaces are allowed to attach an HTTPRoute to this
+        # listener, to just this one (default). A platform running many apps would
+        # typically open this to "All" or a label selector instead, letting each app team
+        # manage its own HTTPRoute without the platform team's involvement.
         namespaces:
           from: Same
 ---
+# HTTPRoute: the actual routing rule, "requests for this host and path go to this
+# backend." This is the piece an app team would own day to day, separate from the
+# Gateway's own listener configuration above.
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
@@ -34,6 +51,5 @@ spec:
             type: PathPrefix
             value: /
       backendRefs:
-        - name: demo-app
+        - name: demo-app   # the Service in demo-app.yaml, not the Deployment directly
           port: 8080
-          

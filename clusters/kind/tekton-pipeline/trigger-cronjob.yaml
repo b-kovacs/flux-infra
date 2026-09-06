@@ -1,6 +1,6 @@
 # Polls the app source repo for new commits and creates a PipelineRun when the tip
 # changes. A real webhook is impossible here (GitHub can't reach a laptop behind WSL/NAT
-# with no inbound path - see learning/02-what-went-badly.md), so this is the pull-based,
+# with no inbound path, see learning/02-what-went-badly.md), so this is the pull-based,
 # WSL-friendly equivalent: outbound-only, no tunnel needed.
 apiVersion: batch/v1
 kind: CronJob
@@ -8,8 +8,8 @@ metadata:
   name: build-trigger
   namespace: default
 spec:
-  schedule: "*/2 * * * *"
-  concurrencyPolicy: Forbid
+  schedule: "*/2 * * * *"    # every 2 minutes: frequent enough to feel responsive, not so frequent it hammers GitHub
+  concurrencyPolicy: Forbid  # never let two poll cycles run at once, even if one runs long
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3
   jobTemplate:
@@ -17,11 +17,13 @@ spec:
       backoffLimit: 1
       template:
         spec:
+          # RBAC for this identity lives in trigger-rbac.yaml: just enough permission to
+          # create a PipelineRun and read/write one specific ConfigMap, nothing broader.
           serviceAccountName: build-trigger
           restartPolicy: Never
           containers:
             - name: trigger
-              image: alpine/k8s:1.29.0
+              image: alpine/k8s:1.29.0   # ships git, kubectl, and jq, everything this script needs
               env:
                 - name: GIT_USER
                   valueFrom:
@@ -37,26 +39,38 @@ spec:
               args:
                 - |
                   set -e
+                  # git ls-remote reads just the remote's HEAD SHA without cloning the
+                  # repo at all, cheap enough to run every 2 minutes forever.
                   LATEST=$(git ls-remote "https://${GIT_USER}:${GIT_PASS}@github.com/b-kovacs/springboot-demo.git" refs/heads/main | cut -f1)
                   if [ -z "$LATEST" ]; then
+                    # Fail loudly here rather than falling through with an empty $LATEST,
+                    # which would look identical to "no new commit" below and silently
+                    # mask a real auth or network problem. An earlier version of this
+                    # script didn't do this and produced a fail-open bug: see the seventh
+                    # lesson in learning/README.md.
                     echo "could not read remote HEAD (auth or network problem)" >&2
                     exit 1
                   fi
+                  # The last SHA this CronJob actually acted on, persisted between runs
+                  # in a ConfigMap since a CronJob's pods don't share any state of their
+                  # own between invocations.
                   LAST=$(kubectl get configmap build-trigger-state -n default -o jsonpath='{.data.lastSha}' 2>/dev/null || true)
                   if [ -n "$LAST" ] && [ "$LATEST" = "$LAST" ]; then
                     echo "no change ($LATEST)"
                     exit 0
                   fi
-                  # tekton-workspace is ONE fixed-name PVC reused by every PipelineRun (kept
-                  # deliberately, for the Maven .m2 cache - see 04-solutions-reference.md).
-                  # Two PipelineRuns running at once share that same directory with no
-                  # mutual exclusion: the later run's git-clone cleanup step (cleandir())
-                  # deletes pom.xml/src/target while the earlier run may still be reading
-                  # them mid-build. This caused every unexplained build failure this
-                  # project hit, traced back only after checking PipelineRun start/end
-                  # timestamps for overlap - see the corrected twelfth lesson in
-                  # learning/README.md. Skip this cycle rather than race a build already
-                  # in flight; the next poll picks the same commit back up.
+                  # tekton-workspace is ONE fixed-name PVC reused by every PipelineRun
+                  # (kept deliberately, for the Maven .m2 cache, see
+                  # workspace-pvc.yaml). Two PipelineRuns running at once share that same
+                  # directory with no mutual exclusion of their own: the later run's
+                  # git-clone cleanup step (cleandir()) deletes the earlier run's
+                  # pom.xml/src/target while that earlier run may still be reading them
+                  # mid-build. This caused every unexplained build failure this project
+                  # hit, traced back only after checking PipelineRun start/end timestamps
+                  # for overlap; see the corrected twelfth lesson in
+                  # learning/README.md. This check is the actual fix: skip this cycle
+                  # rather than race a build already in flight; the next poll picks the
+                  # same commit back up, since LAST was never updated.
                   ACTIVE=$(kubectl get pipelinerun -n default -o json \
                     | jq -r '[.items[] | select(.spec.pipelineRef.name=="build-app") | select(.status.conditions[0].status=="Unknown")] | length')
                   if [ "$ACTIVE" -gt 0 ]; then
@@ -64,6 +78,9 @@ spec:
                     exit 0
                   fi
                   echo "new commit: $LATEST (was: ${LAST:-none}) - triggering build"
+                  # generateName rather than a fixed name, since Kubernetes needs a
+                  # unique object name per run and this CronJob may create many of these
+                  # over time.
                   kubectl create -f - <<PIPELINERUN
                   apiVersion: tekton.dev/v1
                   kind: PipelineRun
@@ -74,6 +91,11 @@ spec:
                     pipelineRef:
                       name: build-app
                     taskRunTemplate:
+                      # Pinned explicitly so every step in this run (git-clone included)
+                      # authenticates using the git-credentials Secret attached to this
+                      # ServiceAccount, rather than the default ServiceAccount, which has
+                      # no credentials and would fail to even attempt an anonymous clone
+                      # cleanly. See tekton-pipeline/serviceaccount.yaml.
                       serviceAccountName: tekton-build
                     params:
                       - name: repo-url
@@ -85,5 +107,9 @@ spec:
                         persistentVolumeClaim:
                           claimName: tekton-workspace
                   PIPELINERUN
+                  # Only update the tracked SHA after successfully creating the run, so a
+                  # kubectl create failure above (caught by `set -e`) leaves LAST
+                  # untouched and the next poll retries the same commit instead of
+                  # silently skipping it.
                   kubectl create configmap build-trigger-state -n default \
                     --from-literal=lastSha="$LATEST" --dry-run=client -o yaml | kubectl apply -f -

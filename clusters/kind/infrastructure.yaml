@@ -1,12 +1,21 @@
+# A Flux Kustomization object. This is not a plain Kustomize kustomization.yaml (the kind
+# is different: kustomize.toolkit.fluxcd.io/v1, not kustomize.config.k8s.io/v1beta1). This
+# is Flux's own custom resource that tells the cluster "watch ./clusters/kind/infrastructure
+# in Git, and keep applying whatever's there, forever." The plain kustomize.config.k8s.io
+# file living inside that directory is a separate, ordinary Kustomize file that just lists
+# which manifests belong to this layer.
+#
+# No dependsOn here on purpose: this is the first layer, everything else depends on it
+# (directly or transitively), so it has nothing to wait for.
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
   name: infrastructure
   namespace: flux-system
 spec:
-  interval: 10m
+  interval: 10m       # how often Flux re-reconciles this layer even with no new commits, to self-heal drift
   path: ./clusters/kind/infrastructure
-  prune: true
+  prune: true         # delete cluster objects whose manifest was removed from Git, not just apply new ones
   sourceRef:
     kind: GitRepository
     name: flux-system

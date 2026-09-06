@@ -1,3 +1,11 @@
+# A PodDisruptionBudget only limits VOLUNTARY disruptions, things like a node drain during
+# an upgrade or `kubectl evict`. It does nothing at all for a pod crashing, an OOM kill, or
+# any other involuntary failure; that's what the readiness/liveness probes and replica
+# counts in demo-app.yaml are for.
+
+# demo-app runs 2 replicas (see demo-app.yaml), so minAvailable: 1 means a voluntary
+# eviction is only allowed to proceed if at least one replica would still be left running
+# afterward.
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
@@ -9,9 +17,12 @@ spec:
     matchLabels:
       app: demo-app
 ---
-# postgres is a singleton (no replication) - this doesn't provide HA, it just stops a
-# voluntary eviction (node drain, etc.) from taking down the only copy without a human
-# choosing to do so first.
+# postgres is a singleton, one replica, with no replication configured (this is a
+# homelab, not a highly available production database). That means minAvailable: 1 would
+# be meaningless here (there's nothing to keep two of). maxUnavailable: 0 instead blocks
+# ANY voluntary eviction outright: it doesn't give postgres high availability, it just
+# stops a node drain or similar from taking down the only copy without a human choosing
+# to do that first.
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:

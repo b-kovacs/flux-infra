@@ -1,3 +1,9 @@
+# Kaniko builds a container image from a Dockerfile and pushes it, entirely inside a
+# normal, unprivileged container, with no access to a Docker daemon or a privileged
+# container runtime socket. That matters here specifically because this is a rootless
+# setup (see learning/README.md): there is no root-owned Docker daemon anywhere on this
+# host to hand a build off to, so a tool that needs one, like a plain `docker build`
+# inside a pod, simply isn't an option.
 apiVersion: tekton.dev/v1
 kind: Task
 metadata:
@@ -5,7 +11,7 @@ metadata:
   namespace: default
 spec:
   params:
-    - name: IMAGE
+    - name: IMAGE   # the full destination, e.g. registry-local:5000/demo-app:<tag>, computed by pipeline.yaml
       type: string
     - name: DOCKERFILE
       type: string
@@ -14,7 +20,7 @@ spec:
       type: string
       default: ./
   workspaces:
-    - name: source
+    - name: source   # bound to the same PVC git-clone checked the source into and maven-build compiled in
   steps:
     - name: build-and-push
       image: gcr.io/kaniko-project/executor:latest
@@ -23,8 +29,16 @@ spec:
         - --dockerfile=$(params.DOCKERFILE)
         - --context=$(workspaces.source.path)/$(params.CONTEXT)
         - --destination=$(params.IMAGE)
+        # These three flags all exist because registry-local speaks plain HTTP, not
+        # HTTPS: --insecure allows pushing to it, --skip-tls-verify skips certificate
+        # validation entirely (there's no certificate to validate), and --insecure-pull
+        # allows pulling the Dockerfile's own FROM base image the same insecure way, in
+        # case that base image is ever also served from this same local registry.
         - --insecure
         - --skip-tls-verify
         - --insecure-pull
+        # Kaniko's own layer cache, pushed to a separate repository in the same local
+        # registry, so a rebuild that hasn't changed most layers doesn't have to
+        # regenerate them from scratch.
         - --cache=true
         - --cache-repo=registry-local:5000/demo-app-cache

@@ -1,5 +1,11 @@
 # --- Postgres ---
-# postgres-secret now lives encrypted in postgres-secret.yaml (SOPS)
+# The database demo-app talks to. postgres-secret.yaml (SOPS-encrypted, applied
+# separately, see apps.yaml) provides POSTGRES_USER/POSTGRES_PASSWORD/POSTGRES_DB.
+
+# A single 1Gi volume for Postgres's data directory. ReadWriteOnce means only one node can
+# mount it at a time, which is fine here since Postgres only ever runs as a single replica
+# anyway (see the PodDisruptionBudget in pdb.yaml for why that's a deliberate choice, not
+# an oversight).
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -25,13 +31,20 @@ spec:
       labels:
         app: postgres
     spec:
+      # This pod never talks to the Kubernetes API, so it doesn't need a token for it.
+      # Every ServiceAccount gets one auto-mounted by default unless told not to.
       automountServiceAccountToken: false
+      # fsGroup makes the mounted volume group-writable by this GID, which is what lets a
+      # non-root container (runAsUser: 999 below) actually write to it.
       securityContext:
         fsGroup: 999
       initContainers:
-        # official postgres image traditionally runs as root and drops privileges itself;
-        # here we run non-root from the start (securityContext below), so fix ownership of
-        # the existing volume (previously written to as root) once, up front.
+        # The official postgres image traditionally starts as root and drops privileges
+        # itself internally. Here the container runs as non-root from the very start
+        # instead (securityContext below), which means it can't fix ownership of a volume
+        # that was previously written to as root by an older version of this Deployment.
+        # This initContainer runs once, as root, purely to chown the volume, then exits;
+        # the actual postgres container that follows never runs as root at all.
         - name: fix-data-perms
           image: postgres:17
           command: ["sh", "-c", "chown -R 999:999 /var/lib/postgresql/data"]
@@ -44,11 +57,14 @@ spec:
           image: postgres:17
           securityContext:
             runAsNonRoot: true
-            runAsUser: 999
+            runAsUser: 999     # the "postgres" user's UID inside this image
             runAsGroup: 999
             allowPrivilegeEscalation: false
             capabilities:
-              drop: ["ALL"]
+              drop: ["ALL"]    # drop every Linux capability; this container needs none of them
+          # envFrom pulls every key in postgres-secret in as an env var with the same
+          # name (POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB), which is exactly what
+          # the official postgres image's own entrypoint script expects to find.
           envFrom:
             - secretRef:
                 name: postgres-secret
@@ -57,6 +73,10 @@ spec:
           volumeMounts:
             - name: postgres-storage
               mountPath: /var/lib/postgresql/data
+              # subPath puts the actual data in a subdirectory of the volume rather than
+              # its root. This keeps the volume's own lost+found directory (which some
+              # storage provisioners create) out of Postgres's data directory, which
+              # Postgres refuses to start against if it isn't completely empty on init.
               subPath: pgdata
           resources:
             requests:
@@ -65,6 +85,10 @@ spec:
             limits:
               cpu: 500m
               memory: 256Mi
+          # pg_isready checks that Postgres is actually accepting connections for this
+          # specific user and database, not just that the process is running. Using a
+          # command probe here (rather than an httpGet one, which demo-app uses below)
+          # because Postgres speaks its own wire protocol, not HTTP.
           readinessProbe:
             exec:
               command: ["sh", "-c", "pg_isready -U $POSTGRES_USER -d $POSTGRES_DB"]
@@ -82,6 +106,10 @@ spec:
           persistentVolumeClaim:
             claimName: postgres-pvc
 ---
+# A plain ClusterIP Service (no type: specified defaults to ClusterIP): only reachable
+# from inside the cluster, which is all demo-app needs. This is also what
+# network-policies.yaml's allow-postgres-from-demo-app rule protects, and what
+# postgres-backup.yaml's pg_dump job connects to by this same name.
 apiVersion: v1
 kind: Service
 metadata:
@@ -93,6 +121,10 @@ spec:
     - port: 5432
       targetPort: 5432
 ---
+# --- demo-app ---
+# The actual Spring Boot application (see the springboot-demo repo). Runs 2 replicas,
+# protected by its own PodDisruptionBudget in pdb.yaml, since unlike Postgres this
+# workload has no state tying it to a single instance.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -107,10 +139,24 @@ spec:
       labels:
         app: demo-app
     spec:
-      automountServiceAccountToken: false
+      automountServiceAccountToken: false   # this pod never calls the Kubernetes API either
       containers:
         - name: demo-app
+          # This tag is rewritten automatically by Flux's image automation controller
+          # (see image-automation/) every time Tekton pushes a new build. The comment
+          # after it is NOT decorative: Flux's Setters strategy parses that exact
+          # {"$imagepolicy": "<namespace>:<name>"} marker to know which line to rewrite
+          # and which ImagePolicy governs it. Removing or reformatting the comment breaks
+          # the automation silently.
           image: registry-local:5000/demo-app:1788711904-0c342a41830ddc30ceccb24dfcfdcab6e9d3597c # {"$imagepolicy": "flux-system:demo-app"}
+          # Always, not IfNotPresent: this tag is unique per build (see the Pipeline's
+          # image-tag result in tekton-pipeline/pipeline.yaml), so in principle a node
+          # would never need to re-pull an already-cached tag under a different image
+          # anyway. Always is kept here as a deliberate belt-and-suspenders choice, after
+          # IfNotPresent combined with a reused tag once caused a node to keep serving a
+          # stale image that had already been fixed elsewhere, indefinitely. See
+          # learning/04-solutions-reference.md, "a stale image getting served despite a
+          # successful rebuild."
           imagePullPolicy: Always
           securityContext:
             runAsNonRoot: true
@@ -120,7 +166,7 @@ spec:
               drop: ["ALL"]
           env:
             - name: DB_HOST
-              value: postgres
+              value: postgres   # resolves via the Service above; both pods live in the same namespace
             - name: DB_USER
               valueFrom:
                 secretKeyRef:
@@ -140,6 +186,13 @@ spec:
             limits:
               cpu: 750m
               memory: 512Mi
+          # Spring Boot Actuator's health groups: readiness reflects whether the app can
+          # currently serve traffic (DB connection pool healthy, etc.), liveness reflects
+          # whether the JVM process itself is in a state worth keeping alive at all. A
+          # failing readiness probe just pulls the pod out of the Service's endpoints;
+          # a failing liveness probe gets the pod restarted. Neither endpoint exists
+          # without spring-boot-starter-actuator and
+          # management.endpoint.health.probes.enabled=true in the app itself.
           readinessProbe:
             httpGet:
               path: /actuator/health/readiness
@@ -151,10 +204,15 @@ spec:
             httpGet:
               path: /actuator/health/liveness
               port: 8080
-            initialDelaySeconds: 20
+            initialDelaySeconds: 20   # longer than readiness: give the JVM time to fully start before risking a restart
             periodSeconds: 15
             timeoutSeconds: 3
 ---
+# name here isn't just a label, it's the ServiceMonitor's selector target too (see
+# observability-config/demo-app-servicemonitor.yaml, which matches on THIS label, not on
+# spec.selector below, a distinction that cost real debugging time; see the tenth lesson
+# in learning/README.md). The "http" port name is also load-bearing: the ServiceMonitor
+# references it by name, not by number.
 apiVersion: v1
 kind: Service
 metadata:

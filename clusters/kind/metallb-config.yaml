@@ -1,3 +1,16 @@
+# Why this configuration lives in its own Flux layer instead of just being part of
+# infrastructure.yaml, next to the MetalLB HelmRelease itself: metallb-config/ defines an
+# IPAddressPool, a custom resource type that MetalLB's own install creates the CRD for.
+# If this Kustomization tried to apply that object in the SAME reconcile pass as the
+# HelmRelease that installs MetalLB, Flux would try to validate the IPAddressPool against
+# a CRD that doesn't exist in the cluster yet, and fail with a dry-run error, every time,
+# even though the HelmRelease it depends on would eventually succeed.
+#
+# Splitting it into its own layer with an explicit dependsOn fixes that: Flux won't even
+# attempt to apply this layer until the infrastructure layer (which installs MetalLB and
+# therefore its CRDs) is confirmed healthy. The same pattern shows up again for
+# observability-config.yaml, which depends on observability.yaml for the same reason
+# (a ServiceMonitor CRD that doesn't exist until kube-prometheus-stack installs it).
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:

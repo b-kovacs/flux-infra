@@ -1,3 +1,6 @@
+# The actual CI setup: the Tasks, the Pipeline, the ServiceAccount, the workspace PVC, and
+# the CronJob that triggers builds of demo-app. This is separate from tekton.yaml (which
+# only installs Tekton's engine) so this layer can explicitly wait on that one.
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -9,6 +12,9 @@ spec:
     - name: tekton
   path: ./clusters/kind/tekton-pipeline
   prune: true
+  # git-credentials.yaml in this layer is SOPS-encrypted; see apps.yaml for the same
+  # decryption block explained in more detail. This one exists so the build-trigger
+  # CronJob and Tekton's git-clone step can both authenticate to GitHub.
   decryption:
     provider: sops
     secretRef:

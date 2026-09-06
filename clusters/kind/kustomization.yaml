@@ -1,12 +1,25 @@
+# This is the root Kustomization Flux actually reconciles (flux-system/gotk-sync.yaml
+# points its own Kustomization's `spec.path` at this directory). It deliberately lists
+# every layer BY NAME instead of letting Kustomize auto-discover files in the folder.
+#
+# Why that matters: several of the entries below are Flux Kustomization objects with a
+# `dependsOn` field (for example tekton-pipeline depends on tekton, apps depends on
+# infrastructure). Kustomize's own folder-scanning mode has no concept of ordering, so if
+# this file just said "scan this directory," those dependsOn relationships would still be
+# applied to the cluster, but nothing here would guarantee they were read in an order that
+# makes the intent obvious. Listing them explicitly, in roughly the order they need to
+# become ready, keeps this file readable as a map of "what depends on what" even though
+# Flux itself resolves the actual ordering from each object's own `dependsOn` field, not
+# from the order they appear here.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
-  - flux-system
-  - infrastructure.yaml
-  - apps.yaml
-  - tekton.yaml
-  - tekton-pipeline.yaml
-  - metallb-config.yaml
-  - image-automation.yaml
-  - observability.yaml
-  - observability-config.yaml
+  - flux-system          # Flux's own bootstrap output (GitRepository + root Kustomization). Do not hand-edit.
+  - infrastructure.yaml   # MetalLB, Envoy Gateway, the local registry: everything else depends on this.
+  - apps.yaml             # demo-app + Postgres: the actual workload.
+  - tekton.yaml           # Installs Tekton itself (the CI engine), vendored from its upstream release.
+  - tekton-pipeline.yaml  # The actual Tasks/Pipeline/CronJob that build and trigger builds of demo-app.
+  - metallb-config.yaml   # MetalLB's IPAddressPool/L2Advertisement: depends on MetalLB (infrastructure) existing first.
+  - image-automation.yaml # Watches the registry for new demo-app builds and auto-commits the new tag to Git.
+  - observability.yaml    # kube-prometheus-stack (Prometheus/Grafana/Alertmanager).
+  - observability-config.yaml # The demo-app ServiceMonitor: depends on observability's CRDs existing first.

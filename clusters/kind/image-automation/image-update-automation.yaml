@@ -1,3 +1,6 @@
+# The piece that actually writes back to Git: once image-policy.yaml has picked a new
+# "newest" tag, this checks out the repo, rewrites the Deployment manifest, commits, and
+# pushes, on its own, with no human involved.
 apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
@@ -16,6 +19,9 @@ spec:
       author:
         name: flux-image-updater
         email: fluxcdbot@users.noreply.github.com
+      # .Changed.Changes is the field name in this Flux version. Older Flux versions and
+      # some still-circulating examples use .Updated.Images instead; using the wrong one
+      # here silently produces an empty commit message rather than an error.
       messageTemplate: |
         Automated image update
 
@@ -24,4 +30,8 @@ spec:
       branch: main
   update:
     path: ./clusters/kind/apps
+    # Setters means Flux finds the exact line to rewrite by searching for a
+    # {"$imagepolicy": "<namespace>:<name>"} comment marker (see the demo-app image line
+    # in apps/demo-app.yaml) rather than trying to guess which image field to update on
+    # its own.
     strategy: Setters

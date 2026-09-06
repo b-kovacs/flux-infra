@@ -1,3 +1,8 @@
+# release.yaml is Tekton's own upstream install manifest, downloaded as-is from
+# https://storage.googleapis.com/tekton-releases/pipeline/latest/release.yaml and vendored
+# into this repo so Flux can apply it from Git. It's over 26,000 lines of generated CRDs
+# and controller manifests: not something to hand-edit or hand-comment. To upgrade Tekton,
+# re-download that file and commit the new version; don't patch it in place.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:

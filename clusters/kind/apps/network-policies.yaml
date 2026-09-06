@@ -1,16 +1,27 @@
-# Default-deny ingress for the namespace, then explicit allows. Egress is left open
-# deliberately (Tekton builds need to reach GitHub/Maven Central/the registry; locking
-# that down too is a separate, riskier change - see learning/06-open-gaps-and-next-steps.md).
+# Default-deny ingress for the whole "default" namespace, then narrow, explicit allows on
+# top of it. Without a NetworkPolicy at all, Kubernetes' own default is the opposite: every
+# pod can reach every other pod, in any namespace, with nothing to stop it.
+#
+# Egress (outbound traffic) is left open on purpose here: Tekton builds need to reach
+# GitHub, Maven Central, and the local registry, all outbound, and locking that down too
+# would be a separate, riskier change (see learning/06-open-gaps-and-next-steps.md). This
+# only restricts who's allowed to call INTO pods in this namespace.
+#
+# This was verified against the cluster's actual CNI plugin (kindnet) with a real
+# deny-all test before any of it was trusted; a NetworkPolicy is a no-op on a CNI that
+# doesn't enforce it at all, and nothing in the API tells you which kind you have (see
+# learning/03-debugging-playbook.md).
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: default-deny-ingress
   namespace: default
 spec:
-  podSelector: {}
-  policyTypes: ["Ingress"]
+  podSelector: {}          # empty selector = every pod in this namespace
+  policyTypes: ["Ingress"] # only Ingress is affected; Egress isn't touched by this object at all
 ---
-# Only demo-app may reach postgres.
+# Only demo-app and the backup job may open a connection to postgres. Nothing else in the
+# namespace, and nothing outside it, can reach port 5432.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -23,6 +34,8 @@ spec:
   policyTypes: ["Ingress"]
   ingress:
     - from:
+        # Multiple entries in `from` are OR'd together: either label match is enough to
+        # be allowed, not both required.
         - podSelector:
             matchLabels:
               app: demo-app
@@ -33,8 +46,10 @@ spec:
         - port: 5432
           protocol: TCP
 ---
-# The Gateway (Envoy) may reach demo-app for real traffic; Prometheus (monitoring
-# namespace) may reach it too, for scraping /actuator/prometheus only.
+# Only the Gateway (real user traffic, routed by Envoy Gateway) and Prometheus (scraping
+# metrics) may reach demo-app. Both are identified by namespace here, not by pod label,
+# since neither Envoy Gateway's nor Prometheus's own pods are labeled in a way this
+# project controls.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:

@@ -1,3 +1,5 @@
+# The Flux Kustomization for the actual workload: demo-app and Postgres, plus the objects
+# that harden and support them (NetworkPolicies, PodDisruptionBudgets, the backup CronJob).
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -5,16 +7,33 @@ metadata:
   namespace: flux-system
 spec:
   interval: 1m
+  # Waits for MetalLB, Envoy Gateway, and the local registry to exist first, since the
+  # Gateway/HTTPRoute in this layer need Envoy Gateway's CRDs, and demo-app's image is
+  # pulled from registry-local.
   dependsOn:
     - name: infrastructure
   path: ./clusters/kind/apps
   prune: true
+  # postgres-secret.yaml in this same directory is SOPS-encrypted (see the root .sops.yaml
+  # and learning/04-solutions-reference.md for how that's set up). Flux needs to be told
+  # explicitly how to decrypt it before applying: which provider (sops) and which
+  # Kubernetes Secret holds the actual private key (sops-age, loaded into the cluster by
+  # hand, never committed to Git). Without this block, Flux would try to apply the
+  # encrypted ciphertext directly as a Secret's value, which the app would fail to
+  # authenticate with.
   decryption:
     provider: sops
     secretRef:
       name: sops-age
+  # The manifests in this layer don't set metadata.namespace on every object (see
+  # demo-app.yaml). This is what actually places them in "default" instead of relying on
+  # whatever namespace kubectl's current context happens to be pointed at.
   targetNamespace: default
   sourceRef:
     kind: GitRepository
     name: flux-system
+  # wait: true makes Flux hold this Kustomization as "not ready" until every object in it
+  # (Deployments included) is actually healthy, not just successfully applied. This matters
+  # because image-automation.yaml depends on this layer: it should only start watching for
+  # new image tags once the app it would update is confirmed to actually be running.
   wait: true

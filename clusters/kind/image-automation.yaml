@@ -1,3 +1,7 @@
+# Flux's image automation: the piece that watches the registry for new demo-app builds
+# and automatically commits the updated tag back into Git, closing the loop from
+# "Tekton pushed a new image" to "the cluster is actually running it," with no human step
+# in between.
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -5,6 +9,8 @@ metadata:
   namespace: flux-system
 spec:
   interval: 1m
+  # Waits for the apps layer (demo-app itself) to be healthy before this starts watching
+  # for updates to it, so it never races the app's own first deployment.
   dependsOn:
     - name: apps
   path: ./clusters/kind/image-automation

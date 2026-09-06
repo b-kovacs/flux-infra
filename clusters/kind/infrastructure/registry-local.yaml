@@ -1,10 +1,25 @@
-# registry-local runs as a plain nerdctl container on the WSL host (network=kind,
-# named volume registry-local-data), NOT as a pod. These objects only make it
-# resolvable/reachable from inside the cluster.
+# registry-local is the container registry Tekton pushes built demo-app images to, and
+# the one demo-app's Deployment pulls from. It runs as a plain nerdctl container on the
+# WSL host (network=kind, named volume registry-local-data for persistence), NOT as a pod
+# inside the cluster. That means Kubernetes has no idea it exists on its own: there's no
+# Pod backing it that Kubernetes' normal Service-to-Pod label matching could find.
 #
-# The EndpointSlice address is the container's static IP. If registry-local is ever
-# recreated, pin the same IP with `nerdctl run --ip 10.4.1.33 ...` (see
-# learning/04-solutions-reference.md) so this doesn't need editing.
+# These two objects exist purely to make that outside container resolvable and reachable
+# by its plain name (registry-local:5000) from inside the cluster, the same way any other
+# in-cluster Service would be:
+#
+#   - the Service gives it a stable DNS name and ClusterIP through CoreDNS, the normal way
+#     any Service does
+#   - the EndpointSlice is what actually says "route traffic for this Service to this IP
+#     address." Normally Kubernetes generates a Service's EndpointSlice automatically by
+#     matching `spec.selector` against pod labels. There's no pod here to match, so this
+#     EndpointSlice is written by hand instead, pointing directly at the container's own
+#     network address.
+#
+# That address is the registry container's CURRENT static IP. It only stays correct as
+# long as the container keeps that same IP. If registry-local is ever recreated, pin the
+# same IP again with `nerdctl run --ip 10.4.1.33 ...` (see
+# learning/04-solutions-reference.md) so this file doesn't need editing every time.
 apiVersion: v1
 kind: Service
 metadata:
@@ -20,6 +35,8 @@ kind: EndpointSlice
 metadata:
   name: registry-local
   namespace: default
+  # This label is what actually associates the EndpointSlice with the Service above.
+  # Kubernetes matches EndpointSlices to a Service by this label, not by name.
   labels:
     kubernetes.io/service-name: registry-local
 addressType: IPv4
@@ -28,6 +45,6 @@ ports:
     port: 5000
     protocol: TCP
 endpoints:
-  - addresses: ["10.4.1.33"]
+  - addresses: ["10.4.1.33"]   # the registry container's real IP on the "kind" nerdctl network
     conditions:
       ready: true

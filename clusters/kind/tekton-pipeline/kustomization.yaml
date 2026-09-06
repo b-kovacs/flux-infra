@@ -1,3 +1,7 @@
+# Plain Kustomize file for the tekton-pipeline layer. git-credentials.yaml is
+# SOPS-encrypted; git-clone.yaml is Tekton's own vendored catalog Task (not
+# authored here, kept as published upstream). Everything else in this list is
+# a manifest specific to this project.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:

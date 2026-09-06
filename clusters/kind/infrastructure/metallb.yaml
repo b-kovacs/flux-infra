@@ -1,3 +1,8 @@
+# MetalLB gives Kubernetes Services of type LoadBalancer an actual IP address on a
+# cluster that has no cloud provider to hand one out. A stock kind cluster leaves
+# LoadBalancer Services stuck in "pending" forever without it. The actual IP range MetalLB
+# hands out is configured separately in metallb-config/ (see the note there for why that's
+# split into its own Flux layer instead of living in this file).
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
 metadata:
@@ -14,11 +19,19 @@ metadata:
   namespace: flux-system
 spec:
   interval: 10m
-  timeout: 15m                    # CHANGED: was absent (defaulted to 5m)
+  # A HelmRelease's default install timeout is 5 minutes. On a cold start (nothing pulled
+  # or cached yet), pulling the chart and every image it references can take longer than
+  # that on its own, so Flux would give up and mark the install failed even though it was
+  # still genuinely in progress. Raised to 15m so a slow first install isn't mistaken for
+  # a broken one.
+  timeout: 15m
   targetNamespace: metallb-system
   install:
     createNamespace: true
-    remediation:                  # CHANGED: added — retry failed installs
+    # If the install still times out or a transient error hits (an image pull racing a
+    # cold registry, for example), Flux retries automatically instead of leaving the
+    # HelmRelease stuck in a failed state that needs a manual `flux reconcile`.
+    remediation:
       retries: 3
   chart:
     spec:

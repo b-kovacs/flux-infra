@@ -59,6 +59,23 @@ custom resource type doesn't exist yet. Splitting the config into its own layer 
 waits for the installer to finish first avoids that. It's a small thing, but getting it
 wrong was one of the actual lessons from building this.
 
+## Why the manifests are heavily commented
+
+The YAML in this repo carries more comments than production Kubernetes manifests usually
+would, on purpose, for the same reason the Spring Boot app in the other repo does: this
+project doubles as study material for me. Nearly every file explains the Kubernetes or
+Flux concept it demonstrates, or the specific bug that led to a particular line existing,
+right at the line it applies to, not just at the top of the file. A `dependsOn` gets a
+comment saying which CRD it's actually waiting on and why; an `imagePullPolicy` gets a
+comment saying which incident made it worth setting explicitly. Comment density on its
+own isn't a fair way to judge either repo's day-to-day production style: the more useful
+signal is the actual decisions underneath the comments, since those would still be there
+with every comment stripped out. A handful of files are deliberately left alone: Flux's
+own bootstrap output (`flux-system/gotk-*.yaml`) and the vendored upstream Tekton release
+and catalog Task (`infrastructure/tekton/release.yaml`,
+`tekton-pipeline/git-clone.yaml`), since those aren't authored here and get overwritten
+wholesale on the next upgrade anyway.
+
 ## What this shows
 
 - **GitOps that actually works, not just GitOps that's configured.** I deleted the

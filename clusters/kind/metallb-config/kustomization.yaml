@@ -1,3 +1,7 @@
+# Plain Kustomize file for this layer's one manifest. Kept as its own directory (rather
+# than folding metallb-config.yaml directly into infrastructure/) specifically so the
+# dependsOn split explained in metallb-config.yaml (one level up) actually has a distinct
+# path to point Flux at.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:

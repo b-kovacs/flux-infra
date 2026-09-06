@@ -1,3 +1,6 @@
+# A dedicated volume for backup dumps, separate from postgres-pvc itself. Keeping backups
+# off the database's own volume means a problem with that volume (corruption, accidental
+# deletion) doesn't take the backups down with it.
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -9,6 +12,9 @@ spec:
     requests:
       storage: 1Gi
 ---
+# Runs pg_dump once a day at 03:00. concurrencyPolicy: Forbid stops a slow dump from ever
+# overlapping with the next scheduled one, which matters here since both would be writing
+# into the same directory.
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -25,18 +31,23 @@ spec:
       template:
         metadata:
           labels:
-            app: postgres-backup
+            app: postgres-backup   # matched by network-policies.yaml's allow-postgres-from-demo-app rule
         spec:
           automountServiceAccountToken: false
           restartPolicy: Never
           containers:
             - name: pg-dump
               image: postgres:17
+              # envFrom gives this container POSTGRES_USER/POSTGRES_PASSWORD/POSTGRES_DB,
+              # the exact key names stored in the secret.
               envFrom:
                 - secretRef:
                     name: postgres-secret
               env:
-                # libpq tools (pg_dump) read PGPASSWORD specifically, not POSTGRES_PASSWORD
+                # libpq command-line tools, pg_dump included, specifically read a variable
+                # named PGPASSWORD. They don't know or care about POSTGRES_PASSWORD, so
+                # envFrom above isn't enough on its own; this second, explicit env entry
+                # copies the same secret value in under the name pg_dump actually expects.
                 - name: PGPASSWORD
                   valueFrom:
                     secretKeyRef:
@@ -47,9 +58,14 @@ spec:
                 - |
                   set -e
                   FILE="/backup/${POSTGRES_DB}-$(date -u +%Y%m%dT%H%M%SZ).dump"
+                  # -F c: PostgreSQL's custom archive format. Unlike a plain SQL dump, this
+                  # is compressed and lets pg_restore selectively restore individual
+                  # tables later, rather than only the whole database at once.
                   pg_dump -h postgres -U "$POSTGRES_USER" -d "$POSTGRES_DB" -F c -f "$FILE"
                   echo "wrote $FILE"
-                  # keep the 7 most recent dumps
+                  # Retention: keep only the 7 most recent dumps, so this volume doesn't
+                  # grow forever. ls -1t sorts newest first; tail -n +8 selects everything
+                  # from the 8th file onward, which xargs then deletes.
                   cd /backup && ls -1t "${POSTGRES_DB}"-*.dump | tail -n +8 | xargs -r rm -f
                   ls -la /backup
               volumeMounts:

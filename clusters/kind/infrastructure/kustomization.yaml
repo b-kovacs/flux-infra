@@ -1,3 +1,7 @@
+# Plain Kustomize file (not a Flux Kustomization, see infrastructure.yaml one level up).
+# This just lists which manifests make up the "infrastructure" layer: cluster-wide
+# networking (MetalLB gives Services a real LoadBalancer IP, Envoy Gateway implements the
+# Gateway API) and the local container registry Tekton pushes built images to.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:

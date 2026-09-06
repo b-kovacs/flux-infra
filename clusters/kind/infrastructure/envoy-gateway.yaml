@@ -1,3 +1,9 @@
+# Envoy Gateway implements the Kubernetes Gateway API, the newer, more expressive
+# successor to Ingress. It's what actually creates the LoadBalancer Service, terminates
+# HTTP, and routes to demo-app based on the Gateway/HTTPRoute objects in apps/gateway.yaml.
+# This chart is published as an OCI artifact (a Helm chart packaged and distributed the
+# same way a container image is) rather than through a classic Helm chart repository
+# index, hence OCIRepository here instead of HelmRepository like metallb.yaml uses.
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
@@ -7,7 +13,7 @@ spec:
   interval: 1h
   url: oci://docker.io/envoyproxy/gateway-helm
   ref:
-    tag: v1.9.1
+    tag: v1.9.1   # pinned explicitly: an OCIRepository with no ref would float to "latest" on every reconcile
 ---
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
@@ -16,12 +22,12 @@ metadata:
   namespace: flux-system
 spec:
   interval: 10m
-  timeout: 15m                          # CHANGED: was absent (defaulted to 5m)
+  timeout: 15m   # same cold-start reasoning as metallb.yaml: the default 5m is too tight for a first install
   targetNamespace: envoy-gateway-system
   install:
     createNamespace: true
-    remediation:                        # CHANGED: added — retry failed installs
+    remediation:   # retry a failed install automatically rather than needing a manual `flux reconcile`
       retries: 3
   chartRef:
-    kind: OCIRepository
+    kind: OCIRepository   # chartRef (not chart.spec.sourceRef) is how a HelmRelease consumes an OCI-hosted chart
     name: envoy-gateway

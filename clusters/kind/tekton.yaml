@@ -1,3 +1,7 @@
+# Installs Tekton itself (the CI engine: its CRDs, its controllers, everything Tekton
+# needs to exist before a single Task or Pipeline can be defined). The manifest this
+# points at, infrastructure/tekton/release.yaml, is Tekton's own vendored upstream
+# release, not something authored in this repo.
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -7,6 +11,11 @@ spec:
   interval: 10m
   path: ./clusters/kind/infrastructure/tekton
   prune: true
+  # wait: true + timeout: 5m makes Flux hold this Kustomization as "not ready" until every
+  # Tekton controller is actually healthy, not just applied. tekton-pipeline.yaml declares
+  # a dependsOn against this Kustomization specifically so it never tries to create a
+  # PipelineRun against CRDs that technically exist in the API server but whose
+  # controllers aren't up yet to actually act on them.
   wait: true
   timeout: 5m
   sourceRef:

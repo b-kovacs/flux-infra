@@ -1,3 +1,6 @@
+# A Tekton Pipeline: wires the three Tasks below together in order, and computes the
+# unique image tag every one of them ends up using. This object defines the shape of a
+# build; trigger-cronjob.yaml is what actually creates a PipelineRun against it.
 apiVersion: tekton.dev/v1
 kind: Pipeline
 metadata:
@@ -10,16 +13,26 @@ spec:
     - name: image
       description: image repo WITHOUT a tag, e.g. registry-local:5000/demo-app
       type: string
+  # One shared workspace, bound to the tekton-workspace PVC by whoever creates the
+  # PipelineRun (see trigger-cronjob.yaml). Every task below reuses it: git-clone writes
+  # the source into it, maven-build compiles in place, kaniko-build reads the built jar
+  # back out of it.
   workspaces:
     - name: shared-data
   results:
+    # This is the whole trick behind giving every build a unique, sortable tag with no
+    # extra Task needed: the git-clone catalog Task (git-clone.yaml) already exposes the
+    # commit's Unix timestamp and full SHA as its own results. Combining them here, at the
+    # Pipeline level, produces something like 1788710310-b0f02272... which is both unique
+    # per commit and sortable as a plain string, exactly what the ImagePolicy's
+    # alphabetical ordering needs (see image-automation/image-policy.yaml).
     - name: image-tag
       description: the unique tag pushed by this run (chronologically sortable, for Flux image automation)
       value: $(tasks.fetch-source.results.committer-date)-$(tasks.fetch-source.results.commit)
   tasks:
     - name: fetch-source
       taskRef:
-        name: git-clone
+        name: git-clone   # the vendored Tekton catalog Task in git-clone.yaml
       workspaces:
         - name: output
           workspace: shared-data
@@ -27,7 +40,7 @@ spec:
         - name: url
           value: $(params.repo-url)
     - name: maven-build
-      runAfter: ["fetch-source"]
+      runAfter: ["fetch-source"]   # explicit ordering: Tekton would otherwise run independent tasks in parallel
       taskRef:
         name: maven-build
       workspaces:
@@ -42,4 +55,8 @@ spec:
           workspace: shared-data
       params:
         - name: IMAGE
+          # Built the same way as the image-tag result above, but computed directly here
+          # rather than referencing $(tasks.*.results.image-tag), since a Task's params
+          # can only reference other tasks' results directly, not a sibling Pipeline
+          # result.
           value: $(params.image):$(tasks.fetch-source.results.committer-date)-$(tasks.fetch-source.results.commit)

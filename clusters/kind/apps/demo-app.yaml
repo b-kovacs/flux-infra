@@ -148,7 +148,7 @@ spec:
           # {"$imagepolicy": "<namespace>:<name>"} marker to know which line to rewrite
           # and which ImagePolicy governs it. Removing or reformatting the comment breaks
           # the automation silently.
-          image: registry-local:5000/demo-app:1788712787-c73892202a0eedcd6de4ce74706f559ee8d8948a # {"$imagepolicy": "flux-system:demo-app"}
+          image: registry-local:5000/demo-app:1788713031-4c7d223c744704d14eb94043d44e3d25fbfe5073 # {"$imagepolicy": "flux-system:demo-app"}
           # Always, not IfNotPresent: this tag is unique per build (see the Pipeline's
           # image-tag result in tekton-pipeline/pipeline.yaml), so in principle a node
           # would never need to re-pull an already-cached tag under a different image

@@ -1,15 +1,14 @@
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
-  name: tekton-pipeline
+  name: metallb-config
   namespace: flux-system
 spec:
   interval: 10m
   dependsOn:
-    - name: tekton
-  path: ./clusters/kind/tekton-pipeline
+    - name: infrastructure
+  path: ./clusters/kind/metallb-config
   prune: true
-  targetNamespace: default
   sourceRef:
     kind: GitRepository
     name: flux-system

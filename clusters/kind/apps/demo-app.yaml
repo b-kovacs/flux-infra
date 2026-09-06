@@ -79,7 +79,7 @@ spec:
       containers:
         - name: demo-app
           image: registry-local:5000/demo-app:1.0
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           env:
             - name: DB_HOST
               value: postgres

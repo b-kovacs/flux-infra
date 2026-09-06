@@ -8,3 +8,5 @@ resources:
   - tekton-pipeline.yaml
   - metallb-config.yaml
   - image-automation.yaml
+  - observability.yaml
+  - observability-config.yaml

@@ -1,0 +1,68 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: kube-prometheus-stack
+  namespace: monitoring
+spec:
+  interval: 30m
+  timeout: 15m
+  install:
+    remediation:
+      retries: 3
+  chart:
+    spec:
+      chart: kube-prometheus-stack
+      version: ">=65.0.0 <66.0.0"
+      sourceRef:
+        kind: HelmRepository
+        name: prometheus-community
+        namespace: monitoring
+  values:
+    # kind's control-plane components aren't exposed the way this chart expects
+    # (no metrics Service for etcd/scheduler/controller-manager on a stock kind
+    # cluster) - leaving these enabled just produces permanently "down" targets
+    # and noisy default alerts for something that was never actually broken.
+    kubeControllerManager:
+      enabled: false
+    kubeScheduler:
+      enabled: false
+    kubeEtcd:
+      enabled: false
+    kubeProxy:
+      enabled: false
+
+    prometheus:
+      prometheusSpec:
+        # watch ServiceMonitors/PodMonitors/PrometheusRules cluster-wide, not just
+        # ones carrying this release's own labels - simplest for a homelab where
+        # we own every workload being scraped.
+        serviceMonitorSelectorNilUsesHelmValues: false
+        serviceMonitorNamespaceSelector: {}
+        podMonitorSelectorNilUsesHelmValues: false
+        podMonitorNamespaceSelector: {}
+        ruleSelectorNilUsesHelmValues: false
+        ruleNamespaceSelector: {}
+        retention: 3d
+        resources:
+          requests: { cpu: 200m, memory: 512Mi }
+          limits: { cpu: 1000m, memory: 1Gi }
+        # deliberately no persistent storage: metrics history is disposable and
+        # not expected to survive an acid-test rebuild, unlike app/DB data.
+        storageSpec: {}
+
+    alertmanager:
+      alertmanagerSpec:
+        resources:
+          requests: { cpu: 50m, memory: 64Mi }
+          limits: { cpu: 200m, memory: 128Mi }
+
+    grafana:
+      resources:
+        requests: { cpu: 100m, memory: 128Mi }
+        limits: { cpu: 500m, memory: 256Mi }
+      defaultDashboardsEnabled: true
+
+    nodeExporter:
+      enabled: true
+    kubeStateMetrics:
+      enabled: true

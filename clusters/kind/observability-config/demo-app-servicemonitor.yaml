@@ -1,0 +1,13 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: demo-app
+  namespace: default
+spec:
+  selector:
+    matchLabels:
+      app: demo-app
+  endpoints:
+    - port: http
+      path: /actuator/prometheus
+      interval: 15s

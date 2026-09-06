@@ -1,0 +1,40 @@
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: build-app
+  namespace: default
+spec:
+  params:
+    - name: repo-url
+      type: string
+    - name: image
+      type: string
+  workspaces:
+    - name: shared-data
+  tasks:
+    - name: fetch-source
+      taskRef:
+        name: git-clone
+      workspaces:
+        - name: output
+          workspace: shared-data
+      params:
+        - name: url
+          value: $(params.repo-url)
+    - name: maven-build
+      runAfter: ["fetch-source"]
+      taskRef:
+        name: maven-build
+      workspaces:
+        - name: source
+          workspace: shared-data
+    - name: build-push
+      runAfter: ["maven-build"]
+      taskRef:
+        name: kaniko-build
+      workspaces:
+        - name: source
+          workspace: shared-data
+      params:
+        - name: IMAGE
+          value: $(params.image)

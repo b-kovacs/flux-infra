@@ -1,0 +1,16 @@
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: maven-build
+  namespace: default
+spec:
+  workspaces:
+    - name: source
+  steps:
+    - name: build
+      image: maven:3.9-eclipse-temurin-25
+      workingDir: $(workspaces.source.path)
+      script: |
+        #!/usr/bin/env bash
+        set -e
+        mvn clean package -DskipTests -B -Dmaven.repo.local=$(workspaces.source.path)/.m2

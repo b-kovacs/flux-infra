@@ -4,3 +4,5 @@ resources:
   - flux-system
   - infrastructure.yaml
   - apps.yaml
+  - tekton.yaml
+  - tekton-pipeline.yaml

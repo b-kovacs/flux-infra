@@ -88,42 +88,102 @@ wrong was one of the actual lessons from building this.
 
 ## A few of the actual bugs (full detail in `learning/`)
 
-**A monitoring rule matched nothing, and nothing complained.** Prometheus never scraped
-demo-app. No error anywhere, the target just wasn't in the list. The cause turned out to
-be a mismatch between two different fields that look similar: the rule telling Prometheus
-what to scrape matches a Service's labels, not the selector that controls which pods it
-routes to. Two objects that look correctly connected, but aren't. I found it by reading
-Prometheus's own generated configuration for that specific job, not by rereading the
-manifests.
+### A monitoring rule matched nothing, and nothing complained
 
-**Three theories for one flaky build failure, and only the third one held up.** A build
-would occasionally fail because a later step couldn't find a file an earlier step had
-just built. My first guess was that the shared storage wasn't reliably available across
-different nodes. I never actually checked that, and it turned out to be wrong. My second
-attempt was to build a fix for that theory, which failed immediately and revealed that the
-tool already has a built-in feature guaranteeing the thing I thought was missing. I
-retracted the theory instead of guessing again. The real answer came from comparing the
-timestamps of every failed run against every other run running at the same time: two
-builds were sharing one fixed storage volume with no protection against both writing to
-it at once, so a later build's cleanup step deleted an earlier build's files while it was
-still running. Fixed by having the automated trigger check whether a build is already
-running before starting a new one.
+Prometheus needs to know which pods to scrape for metrics. In this cluster that's done
+with a `ServiceMonitor`, a custom resource that a controller called the Prometheus
+Operator watches. A `ServiceMonitor` points at a Kubernetes Service and says, in effect,
+scrape whatever that Service sends traffic to.
 
-**The full rebuild test caught a bug in the fix meant to make the rebuild test possible.**
-I made a config file declarative through Nix (my system configuration tool) to close a gap
-where it wasn't tracked in version control. That change turned the file into a symlink
-into the Nix store. That symlink broke inside a freshly created Kubernetes node, because
-the node only had access to the specific folder it was told to mount, not the store path
-the symlink pointed to. Only actually running the full destroy-and-rebuild test caught
-this. Reading the code change would not have.
+I wrote one for demo-app and pointed it at the demo-app Service, which already routed
+real traffic correctly. Nothing errored. Prometheus still never scraped it. I checked
+Prometheus's own list of scrape targets directly, and demo-app wasn't there at all. Not
+listed as failing, just absent, as if it had never been configured.
 
-**A firewall rule was tested before I trusted it.** Kubernetes network policies (rules
-that control which pods can talk to which) are only as good as the network plugin
-enforcing them, and some plugins have, at points in their history, silently accepted the
-rule without enforcing it at all. That's worse than having no rule, because it looks safe
-and isn't. Before writing a real policy, I deployed a simple deny-all rule in a throwaway
-namespace just to confirm this specific cluster's networking actually blocks traffic when
-told to.
+The cause: a Service actually has two different things that both sound like "which pods
+does this apply to." One is `spec.selector`, which really does decide which pods get
+traffic. The other is `metadata.labels`, plain labels on the Service object itself, with
+no effect on routing at all. A `ServiceMonitor`'s own selector matches against a Service's
+`metadata.labels`, not its `spec.selector`. My Service had `spec.selector` set, so routing
+worked fine, but no `metadata.labels` of its own, so the `ServiceMonitor` had nothing to
+actually attach to, even though it was pointed at the right Service.
+
+I found this by reading Prometheus's own generated configuration for that specific job,
+not by rereading the YAML files, which looked completely reasonable on their own. The
+missing piece was a connection between two objects that neither file states directly.
+Fixed by adding the missing labels straight onto the Service.
+
+### Three theories for one flaky build failure, and only the third one held up
+
+The CI pipeline, built with Tekton, shares one storage volume across its steps: clone the
+code, build it, package it, push the image. Each step runs in its own pod, and that
+shared volume is what lets one step's output become the next step's input.
+
+Occasionally, the step that pushes the finished image would fail because it couldn't find
+a file the previous step had just built seconds earlier.
+
+My first theory was that the shared volume wasn't reliably available across different
+nodes, since `kind` runs each Kubernetes node as its own separate container and this
+storage type is tied to a specific node. I never actually checked that theory against a
+real failing run, and it turned out to be wrong.
+
+My second move was to try building a fix based on that theory: force every step of a
+build onto the same node. That fix failed immediately to even apply, and the failure
+revealed something important. Tekton already solves exactly this problem on its own. It
+creates one small helper pod first, then pins every real step of that build to whichever
+node the helper landed on. Node placement was never actually the issue. It was already
+guaranteed correct the whole time.
+
+The real cause turned up by comparing the start and end time of every failed build
+against every other build running around the same time. Every single failure lined up
+with a second build running at that exact moment. Both builds share the same volume, and
+the very first step of a build always wipes that shared space clean before starting a
+fresh checkout. When two builds overlap, one build's cleanup step deletes the other
+build's in-progress files out from under it.
+
+Fixed by having the automated trigger check whether a build is already running before
+starting a new one, and skip that cycle if so.
+
+### The full rebuild test caught a bug in the fix meant to make the rebuild test possible
+
+To keep the whole environment reproducible, configuration files that matter are tracked
+declaratively through Nix, a package and configuration tool, instead of sitting as loose
+files that could quietly get lost or drift.
+
+One such file tells the container tool how to reach a private image registry over plain
+HTTP instead of the HTTPS it expects by default. I moved that file under Nix's
+management. Under the hood, Nix does this by replacing the real file with a symlink
+pointing into its own internal storage folder.
+
+That broke image pulls the next time the cluster was rebuilt from scratch, and only
+inside the containers acting as Kubernetes nodes. `kind` only gives each node visibility
+into the one specific folder it's explicitly told to mount. The symlink itself lived
+inside that mounted folder, but the actual file it pointed to, sitting in Nix's own
+storage location, was outside it. From inside a fresh node, the file just wasn't there.
+
+This only surfaced by actually deleting the cluster and rebuilding it from nothing. The
+file looked completely correct sitting on the host machine, and would have looked correct
+in a code review too. Fixed by also giving each node visibility into that Nix storage
+location, not just the one config folder.
+
+### A firewall rule was tested before it was trusted
+
+Kubernetes has a resource called `NetworkPolicy` for restricting which pods can talk to
+which, similar to a firewall rule between pods. Whether one actually does anything depends
+entirely on the specific networking plugin the cluster uses to enforce it. Some plugins
+have, at points in their history, accepted a `NetworkPolicy` without enforcing it at all,
+silently. That's worse than having no rule, because it looks like protection that isn't
+actually there.
+
+So before writing any real policy for this cluster, I tested the mechanism itself first:
+created a deny-everything rule in a spare, disposable namespace, then tried reaching a pod
+from another pod and confirmed the connection was actually blocked, not just that the
+policy object existed without error.
+
+That confirmed this specific cluster's networking plugin enforces it correctly. The point
+isn't really that one result. It's the habit: test that a security control actually does
+something before depending on it, regardless of what worked on the last cluster or what
+the documentation claims.
 
 ## Built with Claude Code
 

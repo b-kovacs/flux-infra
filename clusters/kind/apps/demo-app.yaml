@@ -57,11 +57,11 @@ spec:
           image: postgres:17
           securityContext:
             runAsNonRoot: true
-            runAsUser: 999     # the "postgres" user's UID inside this image
+            runAsUser: 999 # the "postgres" user's UID inside this image
             runAsGroup: 999
             allowPrivilegeEscalation: false
             capabilities:
-              drop: ["ALL"]    # drop every Linux capability; this container needs none of them
+              drop: ["ALL"] # drop every Linux capability; this container needs none of them
           # envFrom pulls every key in postgres-secret in as an env var with the same
           # name (POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB), which is exactly what
           # the official postgres image's own entrypoint script expects to find.
@@ -139,7 +139,7 @@ spec:
       labels:
         app: demo-app
     spec:
-      automountServiceAccountToken: false   # this pod never calls the Kubernetes API either
+      automountServiceAccountToken: false # this pod never calls the Kubernetes API either
       containers:
         - name: demo-app
           # This tag is rewritten automatically by Flux's image automation controller
@@ -148,7 +148,7 @@ spec:
           # {"$imagepolicy": "<namespace>:<name>"} marker to know which line to rewrite
           # and which ImagePolicy governs it. Removing or reformatting the comment breaks
           # the automation silently.
-          image: registry-local:5000/demo-app:1788711904-0c342a41830ddc30ceccb24dfcfdcab6e9d3597c # {"$imagepolicy": "flux-system:demo-app"}
+          image: registry-local:5000/demo-app:1788712787-c73892202a0eedcd6de4ce74706f559ee8d8948a # {"$imagepolicy": "flux-system:demo-app"}
           # Always, not IfNotPresent: this tag is unique per build (see the Pipeline's
           # image-tag result in tekton-pipeline/pipeline.yaml), so in principle a node
           # would never need to re-pull an already-cached tag under a different image
@@ -166,7 +166,7 @@ spec:
               drop: ["ALL"]
           env:
             - name: DB_HOST
-              value: postgres   # resolves via the Service above; both pods live in the same namespace
+              value: postgres # resolves via the Service above; both pods live in the same namespace
             - name: DB_USER
               valueFrom:
                 secretKeyRef:
@@ -204,7 +204,7 @@ spec:
             httpGet:
               path: /actuator/health/liveness
               port: 8080
-            initialDelaySeconds: 20   # longer than readiness: give the JVM time to fully start before risking a restart
+            initialDelaySeconds: 20 # longer than readiness: give the JVM time to fully start before risking a restart
             periodSeconds: 15
             timeoutSeconds: 3
 ---

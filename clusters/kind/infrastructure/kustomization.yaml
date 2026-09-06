@@ -3,3 +3,4 @@ kind: Kustomization
 resources:
   - metallb.yaml
   - envoy-gateway.yaml
+  - registry-local.yaml

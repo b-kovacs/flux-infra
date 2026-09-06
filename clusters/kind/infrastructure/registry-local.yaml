@@ -1,0 +1,33 @@
+# registry-local runs as a plain nerdctl container on the WSL host (network=kind,
+# named volume registry-local-data), NOT as a pod. These objects only make it
+# resolvable/reachable from inside the cluster.
+#
+# The EndpointSlice address is the container's static IP. If registry-local is ever
+# recreated, pin the same IP with `nerdctl run --ip 10.4.1.33 ...` (see
+# learning/04-solutions-reference.md) so this doesn't need editing.
+apiVersion: v1
+kind: Service
+metadata:
+  name: registry-local
+  namespace: default
+spec:
+  ports:
+    - port: 5000
+      targetPort: 5000
+---
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
+metadata:
+  name: registry-local
+  namespace: default
+  labels:
+    kubernetes.io/service-name: registry-local
+addressType: IPv4
+ports:
+  - name: ""
+    port: 5000
+    protocol: TCP
+endpoints:
+  - addresses: ["10.4.1.33"]
+    conditions:
+      ready: true

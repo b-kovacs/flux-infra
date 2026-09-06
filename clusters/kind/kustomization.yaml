@@ -7,3 +7,4 @@ resources:
   - tekton.yaml
   - tekton-pipeline.yaml
   - metallb-config.yaml
+  - image-automation.yaml

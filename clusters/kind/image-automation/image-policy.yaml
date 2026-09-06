@@ -1,0 +1,15 @@
+apiVersion: image.toolkit.fluxcd.io/v1beta2
+kind: ImagePolicy
+metadata:
+  name: demo-app
+  namespace: flux-system
+spec:
+  imageRepositoryRef:
+    name: demo-app
+  filterTags:
+    # only consider tags in the pipeline's <committer-epoch>-<full-sha> format;
+    # excludes the old fixed :1.0 tag and anything else stray
+    pattern: '^\d{10}-[0-9a-f]{40}$'
+  policy:
+    alphabetical:
+      order: asc

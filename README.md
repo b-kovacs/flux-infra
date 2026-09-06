@@ -66,20 +66,24 @@ just a structural choice.
 
 ## A few of the engineering stories (the honest, detailed versions are in `learning/`)
 
-**A ServiceMonitor matched nothing, silently.** Prometheus never scraped `demo-app` —  no
+**A ServiceMonitor matched nothing, silently.** Prometheus never scraped `demo-app` — no
 error anywhere, the target simply didn't exist in the scrape target list. The cause:
 `ServiceMonitor.spec.selector` matches a Service's own `metadata.labels`, not its
 `spec.selector` (which only controls pod routing) — a distinction neither object's YAML
 states. Found by reading Prometheus's own generated scrape config for the specific job, not
 by re-reading the manifests.
 
-**A plausible diagnosis was wrong, and the attempted fix proved it.** An intermittent
-Tekton build failure was first attributed to `local-path` storage not being reliably shared
-across nodes. Building the "fix" (custom pod affinity) failed immediately — Tekton already
-ships a built-in Affinity Assistant that *guarantees* this exact co-scheduling by design.
-The original diagnosis was retracted rather than left on record once evidence contradicted
-it. The real cause is still unknown, which is stated as plainly as everything that
-*was* solved.
+**Three theories for one intermittent Tekton failure, each retired only by evidence.** A
+build would occasionally fail because a later step couldn't find a file an earlier step had
+just built. Theory one — `local-path` storage not reliably shared across nodes — was never
+actually checked and turned out wrong. Theory two — building a pod-affinity "fix" for that
+failed immediately, revealing Tekton already has a built-in Affinity Assistant that
+guarantees co-scheduling by design; that diagnosis was retracted rather than left on record,
+honestly leaving the real cause unstated rather than guessing again. The actual cause,
+found by finally correlating every failed run's timestamps against every *other* run's: two
+`PipelineRun`s sharing one fixed-name workspace PVC with zero mutual exclusion — a later
+run's cleanup step was deleting an earlier run's `pom.xml`/`src`/`target` mid-build. Fixed
+by having the automated trigger check for an in-flight run before starting a new one.
 
 **The acid test caught a bug in its own prerequisite fix.** Making a config file
 declarative via Nix (to close a "not committed to git" gap) turned it into a symlink into

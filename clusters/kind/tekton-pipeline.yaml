@@ -9,6 +9,10 @@ spec:
     - name: tekton
   path: ./clusters/kind/tekton-pipeline
   prune: true
+  decryption:
+    provider: sops
+    secretRef:
+      name: sops-age
   targetNamespace: default
   sourceRef:
     kind: GitRepository

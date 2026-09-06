@@ -3,6 +3,7 @@ kind: Kustomization
 resources:
   - serviceaccount.yaml
   - workspace-pvc.yaml
+  - git-credentials.yaml
   - git-clone.yaml
   - maven-build.yaml
   - kaniko-build.yaml

@@ -47,6 +47,22 @@ spec:
                     echo "no change ($LATEST)"
                     exit 0
                   fi
+                  # tekton-workspace is ONE fixed-name PVC reused by every PipelineRun (kept
+                  # deliberately, for the Maven .m2 cache - see 04-solutions-reference.md).
+                  # Two PipelineRuns running at once share that same directory with no
+                  # mutual exclusion: the later run's git-clone cleanup step (cleandir())
+                  # deletes pom.xml/src/target while the earlier run may still be reading
+                  # them mid-build. This caused every unexplained build failure this
+                  # project hit, traced back only after checking PipelineRun start/end
+                  # timestamps for overlap - see the corrected twelfth lesson in
+                  # learning/README.md. Skip this cycle rather than race a build already
+                  # in flight; the next poll picks the same commit back up.
+                  ACTIVE=$(kubectl get pipelinerun -n default -o json \
+                    | jq -r '[.items[] | select(.spec.pipelineRef.name=="build-app") | select(.status.conditions[0].status=="Unknown")] | length')
+                  if [ "$ACTIVE" -gt 0 ]; then
+                    echo "a build-app run is already in progress - skipping this cycle to avoid a shared-workspace race"
+                    exit 0
+                  fi
                   echo "new commit: $LATEST (was: ${LAST:-none}) - triggering build"
                   kubectl create -f - <<PIPELINERUN
                   apiVersion: tekton.dev/v1

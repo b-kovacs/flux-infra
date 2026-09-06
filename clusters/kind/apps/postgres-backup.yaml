@@ -35,6 +35,13 @@ spec:
               envFrom:
                 - secretRef:
                     name: postgres-secret
+              env:
+                # libpq tools (pg_dump) read PGPASSWORD specifically, not POSTGRES_PASSWORD
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: postgres-secret
+                      key: POSTGRES_PASSWORD
               command: ["/bin/sh", "-c"]
               args:
                 - |

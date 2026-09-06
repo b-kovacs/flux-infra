@@ -59,6 +59,25 @@ spec:
                       name: build-app
                     taskRunTemplate:
                       serviceAccountName: tekton-build
+                      podTemplate:
+                        # local-path (kind's default StorageClass) is node-local, so the
+                        # "shared" workspace PVC is only actually shared if every Task in
+                        # this run lands on the same node - nothing enforces that by
+                        # default. PREFERRED (not required) affinity: hard/required would
+                        # leave the very first Task (fetch-source) permanently
+                        # unschedulable, since no other pod carrying this run's label
+                        # exists yet for it to be affine to.
+                        affinity:
+                          podAffinity:
+                            preferredDuringSchedulingIgnoredDuringExecution:
+                              - weight: 100
+                                podAffinityTerm:
+                                  labelSelector:
+                                    matchExpressions:
+                                      - key: tekton.dev/pipelineRun
+                                        operator: In
+                                        values: ["$(context.pipelineRun.name)"]
+                                  topologyKey: kubernetes.io/hostname
                     params:
                       - name: repo-url
                         value: https://github.com/b-kovacs/springboot-demo.git

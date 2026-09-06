@@ -16,7 +16,7 @@ rules:
   - apiGroups: [""]
     resources: ["configmaps"]
     resourceNames: ["build-trigger-state"]
-    verbs: ["get", "update"]
+    verbs: ["get", "update", "patch"]
   - apiGroups: [""]
     resources: ["configmaps"]
     verbs: ["create"]

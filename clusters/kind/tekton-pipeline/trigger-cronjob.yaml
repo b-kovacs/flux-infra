@@ -22,11 +22,26 @@ spec:
           containers:
             - name: trigger
               image: alpine/k8s:1.29.0
+              env:
+                - name: GIT_USER
+                  valueFrom:
+                    secretKeyRef:
+                      name: git-credentials
+                      key: username
+                - name: GIT_PASS
+                  valueFrom:
+                    secretKeyRef:
+                      name: git-credentials
+                      key: password
               command: ["/bin/sh", "-c"]
               args:
                 - |
                   set -e
-                  LATEST=$(git ls-remote https://github.com/b-kovacs/springboot-demo.git refs/heads/main | cut -f1)
+                  LATEST=$(git ls-remote "https://${GIT_USER}:${GIT_PASS}@github.com/b-kovacs/springboot-demo.git" refs/heads/main | cut -f1)
+                  if [ -z "$LATEST" ]; then
+                    echo "could not read remote HEAD (auth or network problem)" >&2
+                    exit 1
+                  fi
                   LAST=$(kubectl get configmap build-trigger-state -n default -o jsonpath='{.data.lastSha}' 2>/dev/null || true)
                   if [ -n "$LAST" ] && [ "$LATEST" = "$LAST" ]; then
                     echo "no change ($LATEST)"
